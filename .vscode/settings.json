@@ -1,0 +1,6 @@
+{
+    "sonarlint.connectedMode.project": {
+        "connectionId": "cameron-solirius",
+        "projectKey": "cameron-solirius_filevault"
+    }
+}
