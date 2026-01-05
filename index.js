@@ -3,6 +3,23 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+const promClient = require('prom-client');
+
+const register = new promClient.Registry();
+promClient.collectDefaultMetrics({ register });
+
+const uploadsCounter = new promClient.Counter({
+    name: 'filevault_uploads_total',
+    help: 'Total number of files uploaded to FileVault',
+    registers: [register],
+});
+
+const azureStorageDuration = new promClient.Histogram({
+    name: 'filevault_azure_storage_duration_seconds',
+    help: 'Duration of Azure Blob Storage operations in seconds',
+    buckets: [0.1, 0.5, 1, 2, 5],
+    registers: [register],
+});
 
 const { BlobServiceClient, StorageSharedKeyCredential } = require('@azure/storage-blob');
 
@@ -49,11 +66,16 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     if (req.file) {
+        const endTimer = azureStorageDuration.startTimer();
         try {
             const blobName = req.file.filename;
             const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
             await blockBlobClient.uploadFile(req.file.path);
+
+            endTimer();
+            uploadsCounter.inc();
+
             fs.unlinkSync(req.file.path); // remove the file locally after upload
 
             files.push({ name: fileName, key: blobName });
@@ -61,6 +83,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
             res.status(200).send('File uploaded successfully.');
         } catch (err) {
+            endTimer();
             console.error('Error uploading file:', err);
             res.status(500).send('Failed to upload file.');
         }
@@ -71,6 +94,11 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
 app.get('/files', (req, res) => {
     res.json(files);
+});
+
+app.get('/metrics', async (req, res) => {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
 });
 
 app.delete('/files/:key', async (req, res) => {
