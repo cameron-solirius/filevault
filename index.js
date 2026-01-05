@@ -70,7 +70,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         try {
             const blobName = req.file.filename;
             const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-
+            
             await blockBlobClient.uploadFile(req.file.path);
 
             endTimer();
